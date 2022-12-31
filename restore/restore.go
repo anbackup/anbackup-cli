@@ -72,7 +72,7 @@ func (c *Config) InstallApk() error {
 	}
 
 	// 安装apk
-	c.Log.Info(c.PackageName, " Install apk", c.PackageName)
+	c.Log.Info(c.PackageName, " Install apk ")
 	cmd := "pm install "
 	for i := 0; i < c.Package.Apks; i++ {
 		cmd += deviceApkPath + c.PackageName + strconv.Itoa(i) + ".apk "
