@@ -47,6 +47,7 @@ func init() {
 		host := rootCmd.Flag("host").Value.String()
 		port, _ := strconv.Atoi(rootCmd.Flag("port").Value.String())
 		if host != "" && port != 0 {
+			log.Infof("Connect %s:%d", host, port)
 			client.Connect(host, port)
 		}
 		device = client.Device(adb.AnyDevice())
