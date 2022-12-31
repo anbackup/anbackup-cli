@@ -2,10 +2,12 @@ package restore
 
 import (
 	"anbackup-cli/config"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +18,8 @@ import (
 type Config struct {
 	Packages         []*config.PackageConfig
 	BasePath         string
-	Package          string
+	PackageName      string
+	Package          *config.PackageConfig
 	Count            int
 	FailApkCount     int
 	FailAppDataCount int
@@ -36,8 +39,9 @@ func (c *Config) Start() error {
 	var err error
 	c.Count = len(c.Packages)
 	for _, v := range c.Packages {
-		c.Package = v.PackageName
-		c.Log.Info("Start restore ", c.Package)
+		c.PackageName = v.PackageName
+		c.Package = v
+		c.Log.Info("Start restore ", c.PackageName)
 		if v.Apk {
 			err = c.InstallApk()
 			if err != nil {
@@ -58,27 +62,33 @@ func (c *Config) Start() error {
 }
 
 func (c *Config) InstallApk() error {
-
-	deviceApkFilename := "/sdcard/anbackup/" + c.Package + ".apk"
-	err := c.UploadFile(c.BasePath+"/"+c.Package+".apk", deviceApkFilename)
-	if err != nil {
-		return err
+	deviceApkPath := "/sdcard/anbackup/"
+	for i := 0; i < c.Package.Apks; i++ {
+		apkname := c.PackageName + strconv.Itoa(i) + ".apk"
+		err := c.UploadFile(c.BasePath+"/"+apkname, deviceApkPath+apkname)
+		if err != nil {
+			return err
+		}
 	}
 
 	// 安装apk
-	c.Log.Info(c.Package, " Install apk", c.Package)
-	s, err := c.Device.RunCommand("pm install " + deviceApkFilename)
+	c.Log.Info(c.PackageName, " Install apk", c.PackageName)
+	cmd := "pm install "
+	for i := 0; i < c.Package.Apks; i++ {
+		cmd += deviceApkPath + c.PackageName + strconv.Itoa(i) + ".apk "
+	}
+	s, err := c.Device.RunCommand(cmd)
 	if err != nil {
 		return err
 	}
 	if strings.Contains(strings.ToLower(s), "success") {
-		c.Log.Info(c.Package, " Install apk success")
+		c.Log.Info(c.PackageName, " Install apk success")
 	} else {
-		c.Log.Error(s)
+		return errors.New(s)
 	}
 
 	// 移除临时apk文件
-	s, err = c.Device.RunCommand("rm -r " + deviceApkFilename)
+	s, err = c.Device.RunCommand("rm -r " + deviceApkPath + "*")
 	if err != nil {
 		return err
 	}
@@ -90,20 +100,20 @@ func (c *Config) InstallApk() error {
 
 func (c *Config) InstallAppData() error {
 
-	deviceAppDataFilename := "/sdcard/anbackup/" + c.Package + ".tar.gz"
-	err := c.UploadFile(c.BasePath+"/"+c.Package+".tar.gz", deviceAppDataFilename)
+	deviceAppDataFilename := "/sdcard/anbackup/" + c.PackageName + ".tar.gz"
+	err := c.UploadFile(c.BasePath+"/"+c.PackageName+".tar.gz", deviceAppDataFilename)
 	if err != nil {
 		return err
 	}
 
 	// 获取app权限组
-	s, err := c.Device.RunCommand(`su -c 'cd /data/data/ && ls -l | grep "` + c.Package + `" '`)
+	s, err := c.Device.RunCommand(`su -c 'cd /data/data/ && ls -l | grep "` + c.PackageName + `" '`)
 	if err != nil {
 		return err
 	}
 
 	if s == "" {
-		c.Log.Error(c.Package, " Get app data dir prem error")
+		c.Log.Error(c.PackageName, " Get app data dir prem error")
 		return nil
 	}
 
@@ -111,8 +121,8 @@ func (c *Config) InstallAppData() error {
 	premGroup := r.FindString(s)
 
 	// 解压应用数据
-	c.Log.Info(c.Package, " Restore app data...")
-	s, err = c.Device.RunCommand("su -c 'cd /sdcard/anbackup/ && tar -xzf ./" + c.Package + ".tar.gz -C /data/data/" + c.Package + " && sleep 5s'")
+	c.Log.Info(c.PackageName, " Restore app data...")
+	s, err = c.Device.RunCommand("su -c 'cd /sdcard/anbackup/ && tar -xzf ./" + c.PackageName + ".tar.gz -C /data/data/" + c.PackageName + " && sleep 5s'")
 	if err != nil {
 		return err
 	}
@@ -121,8 +131,8 @@ func (c *Config) InstallAppData() error {
 	}
 
 	// 修改数据文件夹用户组
-	c.Log.Info(c.Package, " Fix file permissions ", premGroup)
-	s, err = c.Device.RunCommand("su -c 'chown -R " + premGroup + ":" + premGroup + " /data/data/" + c.Package + "/.'")
+	c.Log.Info(c.PackageName, " Fix file permissions ", premGroup)
+	s, err = c.Device.RunCommand("su -c 'chown -R " + premGroup + ":" + premGroup + " /data/data/" + c.PackageName + "/.'")
 	if err != nil {
 		return err
 	}

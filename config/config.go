@@ -7,6 +7,7 @@ import (
 
 type PackageConfig struct {
 	PackageName string
+	Apks        int
 	Apk         bool
 	AppData     bool
 }

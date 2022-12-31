@@ -20,7 +20,7 @@ var rootCmd = &cobra.Command{
 	#     # #     # ####### #     # ####### #     # ####### #                ####### ####### #    
 	`,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "1.0.1",
+	Version: "1.1.0",
 }
 
 func Execute() {
@@ -50,7 +50,23 @@ func init() {
 			log.Infof("Connect %s:%d", host, port)
 			client.Connect(host, port)
 		}
-		device = client.Device(adb.AnyDevice())
+		di, err := client.ListDevices()
+		if err != nil {
+			log.Fatal(err)
+		}
+		var deviceIndex = 0
+		if len(di) < 1 {
+			log.Fatal("Please connect the device")
+		}
+		if len(di) > 1 {
+			for i, di2 := range di {
+				log.Infof("%d : %s", i+1, di2.Serial)
+			}
+			log.Info("Please select the device to operate：")
+			fmt.Scanf("%d", &deviceIndex)
+			deviceIndex--
+		}
+		device = client.Device(adb.DeviceWithSerial(di[deviceIndex].Serial))
 	})
 	rootCmd.PersistentFlags().StringP("path", "p", "", "operation path")
 	rootCmd.PersistentFlags().IP("host", nil, "adb connect ip")

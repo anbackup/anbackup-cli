@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -14,7 +15,8 @@ import (
 type Config struct {
 	OutPath          string
 	Packages         []*config.PackageConfig
-	Package          string
+	PackageName      string
+	Package          *config.PackageConfig
 	Count            int
 	FailApkCount     int
 	FailAppDataCount int
@@ -35,28 +37,37 @@ func New(c *Config) *Config {
 }
 
 func (c *Config) BackupApk() error {
-	c.Log.Info(c.Package, " Backup apk file")
-	s, err := c.Device.RunCommand("pm path " + c.Package + ` | grep "base.apk"`)
+	c.Log.Info(c.PackageName, " Backup apk file")
+	s, err := c.Device.RunCommand("pm path " + c.PackageName)
 	if err != nil {
 		return err
 	}
-	apkPath := strings.TrimSpace(strings.Replace(s, "package:", "", -1))
-	rc, err := c.Device.OpenRead(apkPath)
-	if err != nil {
-		return err
+	s = strings.TrimSpace(strings.Replace(s, "package:", "", -1))
+	s2 := strings.Split(s, "\n")
+	for i, v := range s2 {
+		rc, err := c.Device.OpenRead(v)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+		de, err := c.Device.Stat(v)
+		if err != nil {
+			return err
+		}
+		apkName := c.PackageName + strconv.Itoa(i) + ".apk"
+		err = c.SaveFile(rc, de.Size, c.OutPath+"/"+apkName)
+		if err != nil {
+			return err
+		}
 	}
-	de, err := c.Device.Stat(apkPath)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	return c.SaveFile(rc, de.Size, c.OutPath+"/"+c.Package+".apk")
+	c.Package.Apks = len(s2)
+	return nil
 }
 
 func (c *Config) BackupDataFile() error {
-	c.Log.Info(c.Package, " Backup app data")
-	c.Log.Info(c.Package, " Zip app data to temp dir...")
-	command := `su -c 'cd /data/data/` + c.Package + ` && tar -czf  /storage/emulated/0/anbackup/` + c.Package + `.tar.gz . && sleep 5s'`
+	c.Log.Info(c.PackageName, " Backup app data")
+	c.Log.Info(c.PackageName, " Zip app data to temp dir...")
+	command := `su -c 'cd /data/data/` + c.PackageName + ` && tar -czf  /storage/emulated/0/anbackup/` + c.PackageName + `.tar.gz . && sleep 5s'`
 	s, err := c.Device.RunCommand(command)
 	if err != nil {
 		return err
@@ -64,7 +75,7 @@ func (c *Config) BackupDataFile() error {
 	if s != "" {
 		c.Log.Error(s)
 	}
-	zipPath := "/sdcard/anbackup/" + c.Package + ".tar.gz"
+	zipPath := "/sdcard/anbackup/" + c.PackageName + ".tar.gz"
 	rc, err := c.Device.OpenRead(zipPath)
 	if err != nil {
 		return err
@@ -74,16 +85,16 @@ func (c *Config) BackupDataFile() error {
 	if err != nil {
 		return err
 	}
-	return c.SaveFile(rc, de.Size, c.OutPath+"/"+c.Package+".tar.gz")
+	return c.SaveFile(rc, de.Size, c.OutPath+"/"+c.PackageName+".tar.gz")
 }
 
 func (c *Config) DeleteDataFile() error {
-	s, err := c.Device.RunCommand("rm -r /storage/emulated/0/anbackup/" + c.Package + ".tar.gz")
+	s, err := c.Device.RunCommand("rm -r /storage/emulated/0/anbackup/" + c.PackageName + ".tar.gz")
 	if err != nil {
 		return err
 	}
 	if s == "" {
-		c.Log.Info(c.Package, " Remove temp app data")
+		c.Log.Info(c.PackageName, " Remove temp app data")
 	} else {
 		c.Log.Error(err)
 	}
@@ -95,7 +106,8 @@ func (c *Config) Start() error {
 	c.Count = len(c.Packages)
 	for _, v := range c.Packages {
 		c.Log.Info("Start backup ", v.PackageName)
-		c.Package = v.PackageName
+		c.Package = v
+		c.PackageName = v.PackageName
 		if v.Apk {
 			err = c.BackupApk()
 			if err != nil {
