@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -20,7 +22,7 @@ var rootCmd = &cobra.Command{
 	#     # #     # ####### #     # ####### #     # ####### #                ####### ####### #    
 	`,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "1.1.0",
+	Version: "1.1.1",
 }
 
 func Execute() {
@@ -34,6 +36,7 @@ var (
 	log    = logrus.New()
 	client *adb.Adb
 	device *adb.Device
+	isRoot = true
 )
 
 func init() {
@@ -65,6 +68,16 @@ func init() {
 			log.Info("Please select the device to operate：")
 			fmt.Scanf("%d", &deviceIndex)
 			deviceIndex--
+		}
+		// 切换root
+		s, err := exec.LookPath("adb")
+		if err != nil {
+			log.Fatal(err)
+		}
+		b, _ := exec.Command(s, "-s", di[deviceIndex].Serial, "root").CombinedOutput()
+		if !strings.Contains(string(b), "as root") {
+			log.Error(string(b))
+			isRoot = false
 		}
 		device = client.Device(adb.DeviceWithSerial(di[deviceIndex].Serial))
 	})

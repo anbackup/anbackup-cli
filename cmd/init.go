@@ -35,16 +35,7 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Info("Get root")
-		root := true
-		s, err := device.RunCommand("su --help")
-		if err != nil {
-			root = false
-		}
-		if !strings.Contains(s, "MagiskSU") {
-			root = false
-		}
-		if !root {
+		if !isRoot {
 			disableAppData = true
 			log.Warn("This device is not rooted so all app data will not be backed up")
 		}
@@ -62,7 +53,7 @@ var initCmd = &cobra.Command{
 		}
 		c := config.Config{
 			DeviceInfo:  di.DeviceInfo,
-			IsRoot:      root,
+			IsRoot:      isRoot,
 			AddressBook: true,
 			Message:     true,
 			CallRecords: true,
