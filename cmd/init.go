@@ -77,7 +77,11 @@ var initCmd = &cobra.Command{
 }
 
 func getPackages(device *adb.Device, all bool) (packages []string, err error) {
-	s, err := device.RunCommand(`pm list packages -3`)
+	cmd := "pm list packages -3"
+	if all {
+		cmd = "pm list packages"
+	}
+	s, err := device.RunCommand(cmd)
 	if err != nil {
 		return nil, err
 	}

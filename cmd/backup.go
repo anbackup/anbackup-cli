@@ -42,6 +42,14 @@ var backupCmd = &cobra.Command{
 		})
 		b.Start()
 
+		// 剔除未备份的应用
+		for i := 0; i < len(c.Packages); i++ {
+			if !(c.Packages[i].Apk && c.Packages[i].AppData) {
+				c.Packages = append(c.Packages[:i], c.Packages[i+1:]...)
+				i--
+			}
+		}
+
 		// 保存config.json
 		err = c.Save(path + "/config.json")
 		if err != nil {
