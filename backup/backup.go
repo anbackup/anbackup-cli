@@ -2,11 +2,15 @@ package backup
 
 import (
 	"anbackup-cli/config"
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	adb "github.com/zach-klippenstein/goadb"
@@ -50,12 +54,8 @@ func (c *Config) BackupApk() error {
 			return err
 		}
 		defer rc.Close()
-		de, err := c.Device.Stat(v)
-		if err != nil {
-			return err
-		}
 		apkName := c.PackageName + strconv.Itoa(i) + ".apk"
-		err = c.SaveFile(rc, de.Size, c.OutPath+"/"+apkName)
+		err = c.SaveFile(rc, c.OutPath+"/"+apkName)
 		if err != nil {
 			return err
 		}
@@ -66,37 +66,128 @@ func (c *Config) BackupApk() error {
 
 func (c *Config) BackupDataFile() error {
 	c.Log.Info(c.PackageName, " Backup app data")
-	c.Log.Info(c.PackageName, " Zip app data to temp dir...")
-	command := `su -c 'cd /data/data/` + c.PackageName + ` && tar -czf  /storage/emulated/0/anbackup/` + c.PackageName + `.tar.gz . && sleep 5s'`
-	s, err := c.Device.RunCommand(command)
-	if err != nil {
+	packagePath := "/data/data/" + c.PackageName
+	cmd := "find " + packagePath + "/. -type f  -not -empty && sleep 3"
+	s, err := c.Device.RunCommand(cmd)
+	if s == "" || err != nil {
 		return err
 	}
-	if s != "" {
-		c.Log.Error(s)
+	s2 := strings.Split(s, "\n")
+	thread := 0
+	wg := new(sync.WaitGroup)
+	for _, v := range s2 {
+		if v == "" {
+			continue
+		}
+		go func(v string) {
+			thread++
+			wg.Add(1)
+			defer func() {
+				wg.Done()
+				thread--
+			}()
+			var getFile = func() error {
+				rc, err := c.Device.OpenRead(v)
+
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+				localFilename := strings.Replace(v, packagePath, c.OutPath+"/"+c.PackageName, -1)
+				s := strings.Split(localFilename, "/")
+				err = os.MkdirAll(strings.Join(s[:len(s)-1], "/"), os.ModePerm)
+				if err != nil {
+					return err
+				}
+				err = c.SaveFile(rc, localFilename)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+
+			for {
+				if err := getFile(); err != nil {
+					if strings.Contains(err.Error(), "ServerNotAvailable") {
+						time.Sleep(5 * time.Second)
+						continue
+					}
+					c.Log.Error(err)
+					break
+				}
+				break
+			}
+
+		}(v)
+		if thread >= 128 {
+			wg.Wait()
+		}
 	}
-	zipPath := "/sdcard/anbackup/" + c.PackageName + ".tar.gz"
-	rc, err := c.Device.OpenRead(zipPath)
-	if err != nil {
+	wg.Wait()
+	if err := c.archiveAppData(); err != nil {
 		return err
 	}
-	defer rc.Close()
-	de, err := c.Device.Stat(zipPath)
-	if err != nil {
-		return err
+	if err := os.RemoveAll(c.OutPath + "/" + c.PackageName); err != nil {
+		c.Log.Error(err)
 	}
-	return c.SaveFile(rc, de.Size, c.OutPath+"/"+c.PackageName+".tar.gz")
+	return nil
 }
 
-func (c *Config) DeleteDataFile() error {
-	s, err := c.Device.RunCommand("rm -r /storage/emulated/0/anbackup/" + c.PackageName + ".tar.gz")
+func (c *Config) archiveAppData() error {
+	c.Log.Info(c.PackageName, " Zip app data...")
+	dir := c.OutPath + "/" + c.PackageName
+	f, err := os.Create(dir + ".tar.gz")
 	if err != nil {
 		return err
 	}
-	if s == "" {
-		c.Log.Info(c.PackageName, " Remove temp app data")
-	} else {
-		c.Log.Error(err)
+	defer f.Close()
+	gw := gzip.NewWriter(f)
+	defer gw.Close()
+	w := tar.NewWriter(gw)
+	defer w.Close()
+
+	recursionDir(dir+"/", func(f string) error {
+		fi2, err := os.Stat(f)
+		if err != nil {
+			c.Log.Error(err)
+		}
+		h, err := tar.FileInfoHeader(fi2, "")
+		if err != nil {
+			c.Log.Error(err)
+		}
+		h.Name = strings.Replace(f, dir+"//", "./", -1)
+		if err := w.WriteHeader(h); err != nil {
+			return err
+		}
+		if fi2.IsDir() {
+			return nil
+		}
+		f2, err := os.Open(f)
+		if err != nil {
+			return err
+		}
+		io.Copy(w, f2)
+		w.Flush()
+		return nil
+	})
+
+	return nil
+}
+
+func recursionDir(path string, callBack func(f string) error) error {
+	fi, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, fi2 := range fi {
+		if fi2.IsDir() {
+			if err := recursionDir(path+"/"+fi2.Name(), callBack); err != nil {
+				return err
+			}
+		}
+		if err := callBack(path + "/" + fi2.Name()); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -121,18 +212,14 @@ func (c *Config) Start() error {
 			if err != nil {
 				c.FailAppDataCount++
 				v.AppData = false
-				c.Log.Error("Backup data file ", v, "error ", err)
-			}
-			err = c.DeleteDataFile()
-			if err != nil {
-				c.Log.Error("Delete data file  ", v, "error ", err)
+				c.Log.Error("Backup data file ", c.PackageName, "error ", err)
 			}
 		}
 	}
 	return nil
 }
 
-func (c *Config) SaveFile(rc io.ReadCloser, filesize int32, filename string) error {
+func (c *Config) SaveFile(rc io.ReadCloser, filename string) error {
 	buf := make([]byte, 8192)
 	f, err := os.Create(filename)
 	if err != nil {
@@ -153,7 +240,7 @@ func (c *Config) SaveFile(rc io.ReadCloser, filesize int32, filename string) err
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\rSave %s ...  %d / %d", filename, fi.Size(), filesize)
+		fmt.Printf("\r Save %s ...  %d ", c.PackageName, fi.Size())
 		_, err = f.Write(buf[:b])
 		if err != nil {
 			return err
