@@ -44,7 +44,7 @@ var backupCmd = &cobra.Command{
 
 		// 剔除未备份的应用
 		for i := 0; i < len(c.Packages); i++ {
-			if !(c.Packages[i].Apk && c.Packages[i].AppData) {
+			if !c.Packages[i].Apk && !c.Packages[i].AppData {
 				c.Packages = append(c.Packages[:i], c.Packages[i+1:]...)
 				i--
 			}
@@ -56,8 +56,8 @@ var backupCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 		log.Info("Total processing ", b.Count)
-		log.Info("Fail restore apk count ", b.FailApkCount)
-		log.Info("Fail restore app data count ", b.FailAppDataCount)
-		log.Info("Restore complete")
+		log.Info("Fail backup apk count ", b.FailApkCount)
+		log.Info("Fail backup app data count ", b.FailAppDataCount)
+		log.Info("Backup complete")
 	},
 }
