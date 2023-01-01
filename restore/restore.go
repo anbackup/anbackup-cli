@@ -16,7 +16,7 @@ import (
 )
 
 type Config struct {
-	Packages         []*config.PackageConfig
+	RestoreConfig    *config.Config
 	BasePath         string
 	PackageName      string
 	Package          *config.PackageConfig
@@ -35,30 +35,31 @@ func New(c *Config) *Config {
 	return c
 }
 
-func (c *Config) Start() error {
+func (c *Config) Start() {
 	var err error
-	c.Count = len(c.Packages)
-	for _, v := range c.Packages {
+	c.Count = len(c.RestoreConfig.Packages)
+	for _, v := range c.RestoreConfig.Packages {
 		c.PackageName = v.PackageName
 		c.Package = v
 		c.Log.Info("Start restore ", c.PackageName)
 		if v.Apk {
-			err = c.InstallApk()
-			if err != nil {
+			if err = c.InstallApk(); err != nil {
 				c.FailApkCount++
 				c.Log.Error(err)
 			}
 		}
 		if v.AppData {
-			err = c.InstallAppData()
-			if err != nil {
+			if err = c.InstallAppData(); err != nil {
 				c.FailAppDataCount++
 				c.Log.Error(err)
 			}
 		}
 	}
-
-	return nil
+	if c.RestoreConfig.Contacts {
+		if err = c.RestoreContacts(); err != nil {
+			c.Log.Error(err)
+		}
+	}
 }
 
 func (c *Config) InstallApk() error {
@@ -93,7 +94,7 @@ func (c *Config) InstallApk() error {
 		return err
 	}
 	if s != "" {
-		c.Log.Error(err)
+		c.Log.Warn(err)
 	}
 	return nil
 }
@@ -113,7 +114,7 @@ func (c *Config) InstallAppData() error {
 	}
 
 	if s == "" {
-		c.Log.Error(c.PackageName, " Get app data dir prem error")
+		c.Log.Warn(c.PackageName, " Get app data dir prem error")
 		return nil
 	}
 
@@ -127,7 +128,7 @@ func (c *Config) InstallAppData() error {
 		return err
 	}
 	if s != "" {
-		c.Log.Error(s)
+		c.Log.Warn(s)
 	}
 
 	// 修改数据文件夹用户组
@@ -137,7 +138,7 @@ func (c *Config) InstallAppData() error {
 		return err
 	}
 	if s != "" {
-		c.Log.Error(s)
+		c.Log.Warn(s)
 	}
 
 	// 移除临时app data文件
@@ -146,7 +147,81 @@ func (c *Config) InstallAppData() error {
 		return err
 	}
 	if s != "" {
-		c.Log.Error(err)
+		c.Log.Warn(err)
+	}
+	return nil
+}
+
+func (c *Config) RestoreContacts() error {
+	c.Log.Info("Start restore contacts")
+	accountName := time.Now().Format("2006-1-2-15-04-05")
+
+	// 读取本地联系人文件
+
+	b, err := os.ReadFile(c.BasePath + "/" + "contacs.txt")
+	if err != nil {
+		return err
+	}
+
+	contacts := strings.Split(string(b), "Row")
+
+	contactsMap := make(map[string][]string)
+	for _, v := range contacts {
+		if v == "" {
+			continue
+		}
+		display_name := regexp.MustCompile("display_name=(.+?),").FindStringSubmatch(v)[1]
+		data1 := regexp.MustCompile("data1=(.+?),").FindStringSubmatch(v)[1]
+		contactsMap[display_name] = append(contactsMap[display_name], data1)
+	}
+
+	for k, v := range contactsMap {
+		c.Log.Info("Start restre contact ", k)
+		// 创建联系人
+		cmd := "content insert --uri content://com.android.contacts/raw_contacts --bind account_type:s:" + accountName + " --bind account_name:s:" + accountName
+		s, err := c.Device.RunCommand(cmd)
+		if err != nil {
+			c.Log.Warn(err)
+			continue
+		}
+		if s != "" {
+			c.Log.Warn(s)
+		}
+		// 查询联系人id
+		cmd = `content query --uri content://com.android.contacts/raw_contacts  --where "account_name='` + accountName + `' and  display_name IS NULL "`
+		s, err = c.Device.RunCommand(cmd)
+		if err != nil {
+			c.Log.Warn(err)
+			continue
+		}
+		if s == "" {
+			c.Log.Error(s)
+			continue
+		}
+		contact_id := regexp.MustCompile("contact_id=(.+?),").FindStringSubmatch(s)[1]
+		// 添加姓名
+		cmd = `content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:` + contact_id + ` --bind mimetype:s:vnd.android.cursor.item/name --bind data1:s:` + k
+		s, err = c.Device.RunCommand(cmd)
+		if err != nil {
+			c.Log.Warn(err)
+			continue
+		}
+		if s != "" {
+			c.Log.Error(s)
+		}
+		// 添加号码
+
+		for _, v2 := range v {
+			cmd = `content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:` + contact_id + ` --bind mimetype:s:vnd.android.cursor.item/phone_v2 --bind data1:s:` + v2
+			s, err = c.Device.RunCommand(cmd)
+			if err != nil {
+				c.Log.Warn(err)
+				continue
+			}
+			if s != "" {
+				c.Log.Error(s)
+			}
+		}
 	}
 	return nil
 }

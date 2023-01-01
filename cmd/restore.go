@@ -30,10 +30,10 @@ var restoreCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 		r := restore.New(&restore.Config{
-			BasePath: cmd.Flag("path").Value.String(),
-			Log:      log,
-			Device:   device,
-			Packages: c.Packages,
+			BasePath:      cmd.Flag("path").Value.String(),
+			Log:           log,
+			Device:        device,
+			RestoreConfig: &c,
 		})
 		r.Start()
 		log.Info("Total processing ", r.Count)

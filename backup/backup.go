@@ -4,6 +4,7 @@ import (
 	"anbackup-cli/config"
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,8 +18,8 @@ import (
 )
 
 type Config struct {
-	OutPath          string
-	Packages         []*config.PackageConfig
+	BasePath         string
+	BackupConfig     *config.Config
 	PackageName      string
 	Package          *config.PackageConfig
 	Count            int
@@ -29,7 +30,7 @@ type Config struct {
 }
 
 func New(c *Config) *Config {
-	err := os.MkdirAll(c.OutPath, 7777)
+	err := os.MkdirAll(c.BasePath, 7777)
 	if err != nil {
 		c.Log.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func (c *Config) BackupApk() error {
 		}
 		defer rc.Close()
 		apkName := c.PackageName + strconv.Itoa(i) + ".apk"
-		err = c.SaveFile(rc, c.OutPath+"/"+apkName)
+		err = c.SaveFile(rc, c.BasePath+"/"+apkName)
 		if err != nil {
 			return err
 		}
@@ -93,7 +94,7 @@ func (c *Config) BackupDataFile() error {
 					return err
 				}
 				defer rc.Close()
-				localFilename := strings.Replace(v, packagePath, c.OutPath+"/"+c.PackageName, -1)
+				localFilename := strings.Replace(v, packagePath, c.BasePath+"/"+c.PackageName, -1)
 				s := strings.Split(localFilename, "/")
 				err = os.MkdirAll(strings.Join(s[:len(s)-1], "/"), os.ModePerm)
 				if err != nil {
@@ -127,7 +128,7 @@ func (c *Config) BackupDataFile() error {
 	if err := c.archiveAppData(); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(c.OutPath + "/" + c.PackageName); err != nil {
+	if err := os.RemoveAll(c.BasePath + "/" + c.PackageName); err != nil {
 		c.Log.Error(err)
 	}
 	return nil
@@ -135,7 +136,7 @@ func (c *Config) BackupDataFile() error {
 
 func (c *Config) archiveAppData() error {
 	c.Log.Info(c.PackageName, " Zip app data...")
-	dir := c.OutPath + "/" + c.PackageName
+	dir := c.BasePath + "/" + c.PackageName
 	f, err := os.Create(dir + ".tar.gz")
 	if err != nil {
 		return err
@@ -192,10 +193,37 @@ func recursionDir(path string, callBack func(f string) error) error {
 	return nil
 }
 
-func (c *Config) Start() error {
+func (c *Config) BackupContacts() error {
+	c.Log.Info("Start backup contacts")
+	s, err := c.Device.RunCommand("content query --uri content://com.android.contacts/data --projection display_name:data1 && sleep 5s")
+	if err != nil {
+		return err
+	}
+	if strings.Contains(s, "No result found") {
+		return errors.New("contact data not found, so skipping backup")
+	}
+	f, err := os.Create(c.BasePath + "/" + "contacs.txt")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write([]byte(s))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) Start() {
 	var err error
-	c.Count = len(c.Packages)
-	for _, v := range c.Packages {
+	if c.BackupConfig.Contacts {
+		err = c.BackupContacts()
+		if err != nil {
+			c.Log.Error("Backup contacts error ", err)
+			c.BackupConfig.Contacts = false
+		}
+	}
+	c.Count = len(c.BackupConfig.Packages)
+	for _, v := range c.BackupConfig.Packages {
 		c.Log.Info("Start backup ", v.PackageName)
 		c.Package = v
 		c.PackageName = v.PackageName
@@ -216,7 +244,6 @@ func (c *Config) Start() error {
 			}
 		}
 	}
-	return nil
 }
 
 func (c *Config) SaveFile(rc io.ReadCloser, filename string) error {
