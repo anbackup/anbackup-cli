@@ -75,11 +75,12 @@ func init() {
 			log.Fatal(err)
 		}
 		b, _ := exec.Command(s, "-s", di[deviceIndex].Serial, "root").CombinedOutput()
-		if !strings.Contains(string(b), "as root") {
-			log.Error(string(b))
-			isRoot = false
+		if !(strings.Contains(string(b), "running") || strings.Contains(string(b), "adbd as root")) {
+			log.Warn(string(b))
 		}
 		device = client.Device(adb.DeviceWithSerial(di[deviceIndex].Serial))
+		s2, _ := device.RunCommand("whoami")
+		isRoot = strings.Contains(s2, "root")
 	})
 	rootCmd.PersistentFlags().StringP("path", "p", "", "operation path")
 	rootCmd.PersistentFlags().IP("host", nil, "adb connect ip")
