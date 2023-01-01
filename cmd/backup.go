@@ -35,10 +35,10 @@ var backupCmd = &cobra.Command{
 		}
 
 		var b = backup.New(&backup.Config{
-			OutPath:  path,
-			Log:      log,
-			Device:   device,
-			Packages: c.Packages,
+			BasePath:     path,
+			Log:          log,
+			Device:       device,
+			BackupConfig: &c,
 		})
 		b.Start()
 

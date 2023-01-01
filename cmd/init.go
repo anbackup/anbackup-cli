@@ -52,12 +52,10 @@ var initCmd = &cobra.Command{
 			})
 		}
 		c := config.Config{
-			DeviceInfo:  di.DeviceInfo,
-			IsRoot:      isRoot,
-			AddressBook: true,
-			Message:     true,
-			CallRecords: true,
-			Packages:    pc,
+			DeviceInfo: di.DeviceInfo,
+			IsRoot:     isRoot,
+			Contacts:   true,
+			Packages:   pc,
 		}
 		err = c.Save("config.json")
 		if err != nil {

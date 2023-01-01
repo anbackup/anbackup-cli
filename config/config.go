@@ -13,12 +13,14 @@ type PackageConfig struct {
 }
 
 type Config struct {
-	DeviceInfo  string
-	IsRoot      bool
-	AddressBook bool
-	Message     bool
-	CallRecords bool
-	Packages    []*PackageConfig
+	DeviceInfo string
+	IsRoot     bool
+	Contacts   bool
+	// Message     bool
+	// CallRecords bool
+	// Wifi        bool
+	// Magisk      bool
+	Packages []*PackageConfig
 }
 
 func (c *Config) Json() ([]byte, error) {
