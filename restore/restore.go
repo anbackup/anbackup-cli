@@ -170,15 +170,29 @@ func (c *Config) RestoreContacts() error {
 		if v == "" {
 			continue
 		}
-		display_name := regexp.MustCompile("display_name=(.+?),").FindStringSubmatch(v)[1]
-		data1 := regexp.MustCompile("data1=(.+?),").FindStringSubmatch(v)[1]
+		display_name := ""
+		data1 := ""
+		match := regexp.MustCompile("display_name=(.+?),").FindStringSubmatch(v)
+		if len(match) > 1 {
+			display_name = match[1]
+		}
+		if display_name == "" {
+			continue
+		}
+		match = regexp.MustCompile("data1=(.+?)\n").FindStringSubmatch(v)
+		if len(match) > 1 {
+			data1 = match[1]
+		}
+		if display_name == data1 {
+			continue
+		}
 		contactsMap[display_name] = append(contactsMap[display_name], data1)
 	}
 
 	for k, v := range contactsMap {
 		c.Log.Info("Start restre contact ", k)
 		// 创建联系人
-		cmd := "content insert --uri content://com.android.contacts/raw_contacts --bind account_type:s:" + accountName + " --bind account_name:s:" + accountName
+		cmd := fmt.Sprintf("content insert --uri content://com.android.contacts/raw_contacts --bind account_type:s:%s --bind account_name:s:%s", accountName, accountName)
 		s, err := c.Device.RunCommand(cmd)
 		if err != nil {
 			c.Log.Warn(err)
@@ -188,7 +202,7 @@ func (c *Config) RestoreContacts() error {
 			c.Log.Warn(s)
 		}
 		// 查询联系人id
-		cmd = `content query --uri content://com.android.contacts/raw_contacts  --where "account_name='` + accountName + `' and  display_name IS NULL "`
+		cmd = fmt.Sprintf(`content query --uri content://com.android.contacts/raw_contacts  --where "account_name='%s' and display_name='' or  display_name IS NULL and deleted=0"`, accountName)
 		s, err = c.Device.RunCommand(cmd)
 		if err != nil {
 			c.Log.Warn(err)
@@ -200,7 +214,7 @@ func (c *Config) RestoreContacts() error {
 		}
 		contact_id := regexp.MustCompile("contact_id=(.+?),").FindStringSubmatch(s)[1]
 		// 添加姓名
-		cmd = `content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:` + contact_id + ` --bind mimetype:s:vnd.android.cursor.item/name --bind data1:s:` + k
+		cmd = fmt.Sprintf(`content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:%s --bind mimetype:s:vnd.android.cursor.item/name --bind data1:s:%s`, contact_id, k)
 		s, err = c.Device.RunCommand(cmd)
 		if err != nil {
 			c.Log.Warn(err)
@@ -212,7 +226,7 @@ func (c *Config) RestoreContacts() error {
 		// 添加号码
 
 		for _, v2 := range v {
-			cmd = `content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:` + contact_id + ` --bind mimetype:s:vnd.android.cursor.item/phone_v2 --bind data1:s:` + v2
+			cmd = fmt.Sprintf(`content insert --uri content://com.android.contacts/data --bind raw_contact_id:i:%s --bind mimetype:s:vnd.android.cursor.item/phone_v2 --bind data1:s:%s`, contact_id, v2)
 			s, err = c.Device.RunCommand(cmd)
 			if err != nil {
 				c.Log.Warn(err)
