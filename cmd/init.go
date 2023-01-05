@@ -39,7 +39,7 @@ var initCmd = &cobra.Command{
 			disableAppData = true
 			log.Warn("This device is not rooted so all app data will not be backed up")
 		}
-		pc := []*config.PackageConfig{}
+		var pc []*config.PackageConfig
 
 		for _, v := range packages {
 			if v == "" {

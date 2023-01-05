@@ -4,6 +4,7 @@ import (
 	"anbackup-cli/backup"
 	"anbackup-cli/config"
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 
@@ -33,7 +34,14 @@ var backupCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-
+		serial, err := device.Serial()
+		if err != nil {
+			log.Fatal(err)
+		}
+		if c.DeviceInfo != serial {
+			log.Warn("You are backing up different device configurations, is this unsafe to continue (Enter to continue)")
+			fmt.Scanln()
+		}
 		var b = backup.New(&backup.Config{
 			BasePath:     path,
 			Log:          log,

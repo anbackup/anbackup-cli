@@ -4,6 +4,7 @@ import (
 	"anbackup-cli/config"
 	"anbackup-cli/restore"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -28,6 +29,14 @@ var restoreCmd = &cobra.Command{
 		err = json.Unmarshal(b, &c)
 		if err != nil {
 			log.Fatal(err)
+		}
+		serial, err := device.Serial()
+		if err != nil {
+			log.Fatal(err)
+		}
+		if c.DeviceInfo != serial {
+			log.Warn("You are backing up different device configurations, is this unsafe to continue (Enter to continue)")
+			fmt.Scanln()
 		}
 		r := restore.New(&restore.Config{
 			BasePath:      cmd.Flag("path").Value.String(),
