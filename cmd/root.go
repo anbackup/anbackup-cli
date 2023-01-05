@@ -22,7 +22,7 @@ var rootCmd = &cobra.Command{
 	#     # #     # ####### #     # ####### #     # ####### #                ####### ####### #    
 	`,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "1.2.1",
+	Version: "1.2.2",
 }
 
 func Execute() {

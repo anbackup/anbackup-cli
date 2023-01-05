@@ -202,7 +202,7 @@ func (c *Config) BackupContacts() error {
 	if strings.Contains(s, "No result found") {
 		return errors.New("contact data not found, so skipping backup")
 	}
-	f, err := os.Create(c.BasePath + "/" + "contacs.txt")
+	f, err := os.Create(c.BasePath + "/" + "contacts.txt")
 	if err != nil {
 		return err
 	}

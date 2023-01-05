@@ -158,7 +158,7 @@ func (c *Config) RestoreContacts() error {
 
 	// 读取本地联系人文件
 
-	b, err := os.ReadFile(c.BasePath + "/" + "contacs.txt")
+	b, err := os.ReadFile(c.BasePath + "/" + "contacts.txt")
 	if err != nil {
 		return err
 	}
